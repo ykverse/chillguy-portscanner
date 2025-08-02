@@ -40,53 +40,64 @@ cat << "EOF"
                       yeah bro, just casually scanning 65k ports
 EOF
 
-echo -e "\n${CYAN}Enter IP address to scan: ${NC}"
-read -r target
+echo -e "${CYAN}Welcome to Chill Guy Port Scanner 😎${NC}"
 
-echo -e "\n${CYAN}Scan type? [tcp/udp]: ${NC}"
-read -r scan_type
+# Ask for Target IP/Hostname
+read -p "Enter target IP or hostname: " target
 
-echo -e "${CYAN}Scanning all ports on $target using $scan_type... Results will be saved to '${target}_scan.log'${NC}"
-sleep 1
+# Ask for scan mode
+echo "Choose scan type:"
+echo "1) Scan common ports (1-1024)"
+echo "2) Scan custom port range"
+echo "3) Scan specific ports (comma-separated, e.g., 22,80,443)"
+read -p "Enter choice [1-3]: " choice
 
-log_file="${target}_scan.log"
-rm -f "$log_file"
-
-# TCP Port Scan
-if [[ "$scan_type" == "tcp" ]]; then
-    echo -e "\n${CYAN}Starting TCP scan... (This is the fast & furious mode )${NC}"
-    for port in {1..65535}; do
-        (
-            timeout 0.5 bash -c "</dev/tcp/$target/$port" &>/dev/null
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}[+] TCP Port $port is OPEN${NC}"
-                echo "[+] TCP Port $port is OPEN" >> "$log_file"
-            else
-                echo -e "${RED}[-] TCP Port $port is closed${NC}" >> "$log_file"
-            fi
-        ) &
-        if (( $port % 300 == 0 )); then wait; fi
-    done
-    wait
+# Ask if export to log
+read -p "Do you want to save results to a log file? (y/n): " log_choice
+if [[ "$log_choice" == "y" || "$log_choice" == "Y" ]]; then
+    logfile="scan_$target_$(date +%s).log"
+    touch "$logfile"
+    echo -e "${CYAN}Logging results to ${logfile}${NC}"
 fi
 
-# UDP Port Scan (basic version, slower and noisy)
-if [[ "$scan_type" == "udp" ]]; then
-    echo -e "\n${CYAN}Starting UDP scan... (Might take time, bro )${NC}"
-    for port in {1..100}; do
-        (
-            timeout 1s nc -vnzu "$target" "$port" &>/dev/null
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}[+] UDP Port $port is OPEN${NC}"
-                echo "[+] UDP Port $port is OPEN" >> "$log_file"
-            else
-                echo -e "${RED}[-] UDP Port $port is filtered or closed${NC}" >> "$log_file"
-            fi
-        ) &
-        if (( $port % 30 == 0 )); then wait; fi
+echo ""
+echo -e "${GREEN}Scanning $target... please wait.${NC}"
+
+# Scanner Function
+scan_port() {
+    (echo >/dev/tcp/$target/$1) >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Port $1 is OPEN${NC}"
+        [[ $log_choice == "y" || $log_choice == "Y" ]] && echo "Port $1 is OPEN" >> "$logfile"
+    else
+        echo -e "${RED}Port $1 is CLOSED${NC}"
+        [[ $log_choice == "y" || $log_choice == "Y" ]] && echo "Port $1 is CLOSED" >> "$logfile"
+    fi
+}
+
+# Run selected scan type
+if [ "$choice" == "1" ]; then
+    for port in {1..1024}; do
+        scan_port $port &
     done
-    wait
+elif [ "$choice" == "2" ]; then
+    read -p "Enter start port: " start
+    read -p "Enter end port: " end
+    for ((port=$start; port<=$end; port++)); do
+        scan_port $port &
+    done
+elif [ "$choice" == "3" ]; then
+    read -p "Enter specific ports (comma-separated): " ports
+    IFS=',' read -ra port_array <<< "$ports"
+    for port in "${port_array[@]}"; do
+        scan_port $port &
+    done
+else
+    echo "Invalid option. Exiting."
+    exit 1
 fi
 
-echo -e "\n${CYAN}Scan complete. Chill vibes only 😎🔥"
-echo -e "Results saved in: ${log_file}${NC}"
+# Wait for background scans to finish
+wait
+
+echo -e "${CYAN}Scan complete.${NC}"
